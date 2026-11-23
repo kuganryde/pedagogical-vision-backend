@@ -24,12 +24,22 @@ Modular AI Backend Service implementing the 5-Layer Pedagogical Model Stack:
     # Middleware to ensure proper routing across Vercel serverless rewrites
     @app.middleware("http")
     async def handle_serverless_routing(request: Request, call_next):
-        path = request.scope.get("path", "")
-        # Only normalize if the path was literally rewritten to the entrypoint filename
-        if path.startswith("/api/index.py"):
-            new_path = path[len("/api/index.py"):] or "/"
+        query_str = request.scope.get("query_string", b"").decode("utf-8")
+        if "__path__=" in query_str:
+            import urllib.parse
+            params = urllib.parse.parse_qs(query_str)
+            if "__path__" in params and params["__path__"]:
+                raw_path = params["__path__"][0]
+                if not raw_path.startswith("/"):
+                    raw_path = "/" + raw_path
+                request.scope["path"] = raw_path
+                # Clean up query string so child endpoints receive standard query params
+                clean_params = {k: v for k, v in params.items() if k != "__path__"}
+                request.scope["query_string"] = urllib.parse.urlencode(clean_params, doseq=True).encode("utf-8")
+        elif request.scope.get("path", "").startswith("/api/index.py"):
+            new_path = request.scope["path"][len("/api/index.py"):] or "/"
             request.scope["path"] = new_path
-        elif path == "/api/index":
+        elif request.scope.get("path", "") == "/api/index":
             request.scope["path"] = "/"
 
         return await call_next(request)
@@ -54,16 +64,13 @@ Modular AI Backend Service implementing the 5-Layer Pedagogical Model Stack:
     )
 
     @app.get("/", tags=["System"])
-    async def root(request: Request):
+    async def root():
         return {
             "status": "healthy",
             "service": "pedagogical-vision-backend",
             "documentation": "/docs",
             "health_check": "/health",
-            "api_prefix": settings.server.api_prefix,
-            "headers": dict(request.headers),
-            "scope_path": request.scope.get("path"),
-            "scope_query": request.scope.get("query_string", b"").decode("utf-8")
+            "api_prefix": settings.server.api_prefix
         }
 
     # Health & status check
