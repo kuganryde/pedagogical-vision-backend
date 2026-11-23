@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from src.config import settings
 from src.api.v1.router import api_router
@@ -21,6 +21,26 @@ Modular AI Backend Service implementing the 5-Layer Pedagogical Model Stack:
         redoc_url="/redoc"
     )
 
+    # Middleware to ensure proper routing across Vercel serverless rewrites
+    @app.middleware("http")
+    async def handle_serverless_routing(request: Request, call_next):
+        # In Vercel, when rewriting to /api/index.py, headers often contain the original route
+        forwarded = (
+            request.headers.get("x-matched-path")
+            or request.headers.get("x-forwarded-uri")
+            or request.headers.get("x-vercel-matched-path")
+        )
+        if forwarded and not forwarded.startswith("/api/index"):
+            request.scope["path"] = forwarded.split("?")[0]
+        elif request.scope.get("path", "").startswith("/api/index.py"):
+            new_path = request.scope["path"][len("/api/index.py"):] or "/"
+            request.scope["path"] = new_path
+        elif request.scope.get("path", "").startswith("/api/index"):
+            new_path = request.scope["path"][len("/api/index"):] or "/"
+            request.scope["path"] = new_path
+
+        return await call_next(request)
+
     # CORS configuration for easy frontend attachment
     app.add_middleware(
         CORSMiddleware,
@@ -30,8 +50,19 @@ Modular AI Backend Service implementing the 5-Layer Pedagogical Model Stack:
         allow_headers=["*"],
     )
 
+    @app.get("/", tags=["System"])
+    async def root():
+        return {
+            "status": "healthy",
+            "service": "pedagogical-vision-backend",
+            "documentation": "/docs",
+            "health_check": "/health",
+            "api_prefix": settings.server.api_prefix
+        }
+
     # Health & status check
     @app.get("/health", tags=["System"])
+    @app.get("/api/health", tags=["System"])
     async def health_check():
         return {
             "status": "healthy",
