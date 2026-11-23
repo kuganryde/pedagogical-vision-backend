@@ -1,142 +1,105 @@
 # Pedagogical Vision & Behavioral Analytics Engine
 
-> High-throughput, modular AI backend and API service implementing the recommended 5-layer pedagogical vision stack for automated lecture hall and classroom engagement analysis.
+Modular computer vision microservice implementing a multi-stage model pipeline for classroom and lecture hall behavior analytics.
 
 ---
 
-## 🎯 Modular Model Stack Overview
+## Modular Architecture Overview
 
-| # | Detection Layer | Recommended Models | Target Pedagogical & Behavioral Cues |
-|---|---|---|---|
-| **1** | **Student Detection & Tracking** | `YOLOv8` / `YOLO11` + `ByteTrack` | Isolates individual students in dense lecture halls and assigns persistent IDs across frames without losing track during occlusion. |
-| **2** | **Body Posture & Gestures** | `YOLOv8-Pose` / `MediaPipe Holistic` | Tracks skeletal keypoints to identify hand-raising, leaning forward (high engagement), slumping/sleeping on desk, or turning away. |
-| **3** | **Head Pose & Gaze Direction** | `6DRepNet` / `L2CS-Net` | Estimates pitch, yaw, and roll to verify whether students are tracking the lecturer/board, looking at notes, or distracted by phones. |
-| **4** | **Facial Affect & Micro-Reactions** | `HSEmotion (EfficientNet-B0)`, `POSTER++`, `OpenFace 2.0` | Classifies classroom-specific affective states (`confusion`, `boredom`, `delight`, `frustration`, `concentration`) and Facial Action Units (AU01, AU02, AU04, AU12, AU15, AU43) rather than generic happy/sad emotions. |
-| **5** | **Temporal Sentiment Fusion** | `ST-GCN`, `Temporal Transformer`, `XGBoost` | Aggregates movement, gaze, and facial vectors over a 5–15 second sliding window to output an accurate fused engagement and sentiment score. |
+The system pipeline is structured into 5 decoupled analytical layers:
+
+1. **Student Detection & Tracking**: Isolates individual students using bounding box detection and ByteTrack association. Tracks persistent IDs across frames with occlusion state management.
+2. **Body Posture & Gestures**: Extracts 17 skeletal keypoints to detect hand-raising for queries, forward torso inclination (high focus), desk slumping, and turning away.
+3. **Head Pose & Gaze Target**: Regresses Euler angles (pitch, yaw, roll) to classify gaze focus into distinct zones: lecturer/board, notebook/reading, mobile phone in lap, or lateral distraction.
+4. **Facial Affect & Action Units**: Analyzes facial cues to determine classroom-specific cognitive states (concentration, confusion, boredom, delight, frustration) and Action Units (AU01, AU02, AU04, AU12, AU15, AU43).
+5. **Temporal Sentiment Fusion**: Fuses movement, gaze stability, and affective distributions over a configurable 5–15 second sliding buffer into an overall engagement index (0.00 to 1.00) and triggers pedagogical alerts.
 
 ---
 
-## 🔌 Connection Options
+## Real-World Application Usecases
 
-The service is engineered to be attached to **any** frontend, edge device, microservice, or LMS:
+### 1. In-Classroom Dashboard Integration (e.g. EduSphere AI)
+- Ingests overhead CCTV, IP camera feeds (via RTSP), or recorded video.
+- Provides real-time engagement velocity metrics to instructors.
+- Alerts the teacher when cognitive confusion exceeds configurable thresholds.
 
-### 1. REST API (`/api/v1`)
-- `POST /api/v1/analyze/frame`: Ingest a single frame (base64 JSON or image bytes).
-- `POST /api/v1/analyze/upload`: Multipart file upload for IP cameras / cURL.
-- `POST /api/v1/session/start`: Initialize a lecture session with persistent tracking.
-- `POST /api/v1/session/{session_id}/frame`: Ingest frame into active session (maintains 5–15s sliding window history).
-- `GET /api/v1/session/{session_id}/metrics`: Live classroom dashboard statistics.
-- `POST /api/v1/session/{session_id}/stop`: Terminate session and export pedagogical summary report.
-- `GET /api/v1/config` & `PUT /api/v1/config/sliding-window`: Runtime parameter tuning.
+### 2. Remote & Hybrid Learning Platforms
+- Ingests student webcam video via WebRTC or canvas frames over WebSocket.
+- Detects attention drop-offs, phone distraction, or prolonged absence.
 
-### 2. Low-Latency WebSocket Stream (`/ws/stream/{session_id}`)
-- Connect via `ws://<host>:8000/ws/stream/<session_id>`
-- Send JPEG frames or JSON frame payloads at 5–30 FPS.
-- Receive immediate per-frame JSON analytics containing all 5 layers and real-time alerts.
+### 3. Post-Lecture Analytics & Instructional Auditing
+- Processes recorded video sessions to generate automated pedagogical reports.
+- Pinpoints the exact moments of highest engagement versus student confusion.
 
-### 3. Outbound Webhooks & Event Dispatcher
-- Real-time webhook push when pedagogical anomalies trigger:
-  - `STUDENT_HAND_RAISE`: Instant notification when a student raises their hand to ask a question.
-  - `LECTURE_CONFUSION_SPIKE`: Alerts the lecturer or dashboard when >30% of the class shows cognitive impasse.
-  - `PERSISTENT_DISENGAGEMENT`: Flags students looking at smartphone screens or sleeping on desks > 8s.
+### 4. Event-Driven Webhooks
+- Automatically dispatches structured HTTP POST alerts to learning management systems (Canvas, Moodle) or automation platforms (n8n).
 
-### 4. Python SDK (`EduVisionClient`)
-Ready-to-use client for Python apps (Django, Flask, FastAPI, Streamlit, Celery):
+---
+
+## Integration Guide
+
+### Python Client SDK
 ```python
 from src.sdk.client import EduVisionClient
 
-client = EduVisionClient(base_url="http://localhost:8000")
+client = EduVisionClient(base_url="http://localhost:8088")
 
-# Start session
-client.start_session("hall_101", classroom_name="Lecture Hall A")
+# Start classroom session
+client.start_session(session_id="lecture_101", classroom_name="Room A", sliding_window_seconds=10.0)
 
-# Send frame (sliding window maintains state per student)
-result = client.send_session_frame("hall_101", frame_id=1, image_bytes=frame_bytes)
-print(f"Classroom Engagement: {result['mean_engagement_score']}")
-print(f"Active Alerts: {result['active_pedagogical_alerts']}")
+# Process frame
+result = client.send_session_frame(session_id="lecture_101", frame_id=1, image_bytes=frame_bytes)
+print("Engagement Score:", result["mean_engagement_score"])
+print("Alerts:", result["active_pedagogical_alerts"])
 
-# Stop session
-summary = client.stop_session("hall_101")
-print(summary["pedagogical_insights"])
+# Conclude session and export report
+summary = client.stop_session("lecture_101")
+print("Summary:", summary["pedagogical_insights"])
 ```
 
-### 5. Node.js / TypeScript Integration
+### Node.js / TypeScript
 ```javascript
-const res = await fetch('http://localhost:8000/api/v1/session/start', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+const res = await fetch("http://localhost:8088/api/v1/session/lecture_101/frame", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
-    session_id: 'lecture_room_a',
-    classroom_name: 'Room A',
-    sliding_window_seconds: 10.0
+    session_id: "lecture_101",
+    frame_id: 1,
+    image_base64: base64Data
   })
 });
+const data = await res.json();
+console.log("Mean Engagement:", data.mean_engagement_score);
 ```
+
+### Low-Latency WebSocket Stream
+Connect to `ws://localhost:8088/ws/stream/:sessionId` to stream raw JPEG frames or JSON payloads and receive immediate per-frame analysis.
 
 ---
 
-## ⚙️ Easy Configuration
+## Configuration (`config/config.yaml`)
 
-All parameters are configured in [`config/config.yaml`](file:///root/edu-vision-backend/config/config.yaml) or via environment variables:
-
-```yaml
-layers:
-  detection_and_tracking:
-    model_name: "yolo11m"
-    confidence_threshold: 0.45
-    track_buffer: 30
-  
-  body_posture:
-    model_name: "yolov8m-pose"
-    hand_raise_wrist_nose_margin: 15.0
-    lean_forward_torso_deg: 18.0
-    
-  head_pose:
-    model_name: "6DRepNet"
-    gaze_zones:
-      board_lecturer:
-        yaw_range: [-22.0, 22.0]
-        pitch_range: [-15.0, 15.0]
-      notebook_desk:
-        pitch_range: [-45.0, -15.0]
-      phone_lap:
-        pitch_range: [-90.0, -45.0]
-
-  facial_affect:
-    model_name: "HSEmotion-B0"
-    emotions: ["concentration", "confusion", "boredom", "delight", "frustration", "neutral"]
-
-  temporal_fusion:
-    sliding_window_seconds: 10.0  # 5-15s sliding window
-    sample_rate_fps: 5.0
-    weights:
-      attention_gaze: 0.40
-      facial_affect: 0.35
-      body_posture: 0.25
-    alert_thresholds:
-      confusion_alert_rate: 0.30
-      prolonged_distraction_seconds: 8.0
-```
+- `server.port`: Default `8088`.
+- `layers.temporal_fusion.sliding_window_seconds`: Default `10.0` (adjustable from 5.0 to 15.0).
+- `layers.temporal_fusion.alert_thresholds.confusion_alert_rate`: Default `0.30` (30% threshold).
+- `layers.temporal_fusion.weights`: Adjustable relative weights for gaze, affect, and posture.
 
 ---
 
-## 🚀 Quickstart
+## Running the Engine
 
-### 1. Local Run
+### Local Setup
 ```bash
 cd /root/edu-vision-backend
+python3 -m venv venv
 source venv/bin/activate
-uvicorn src.api.server:app --host 0.0.0.0 --port 8000
+pip install -r requirements.txt
+uvicorn src.api.server:app --host 0.0.0.0 --port 8088
 ```
+Interactive OpenAPI documentation will be accessible at `http://localhost:8088/docs`.
 
-Interactive OpenAPI Swagger UI is available at `http://localhost:8000/docs`.
-
-### 2. Docker Deployment
+### Automated Testing
 ```bash
-docker compose up -d --build
+./run_tests.sh
 ```
-
-### 3. Run Test Suite
-```bash
-pytest tests/ -v
-```
+Runs the 14 automated unit and pipeline tests, tests the WebSocket endpoint, and verifies the SDK.
