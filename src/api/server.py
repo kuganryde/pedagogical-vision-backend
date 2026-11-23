@@ -24,22 +24,25 @@ Modular AI Backend Service implementing the 5-Layer Pedagogical Model Stack:
     # Middleware to ensure proper routing across Vercel serverless rewrites
     @app.middleware("http")
     async def handle_serverless_routing(request: Request, call_next):
-        # In Vercel, when rewriting to /api/index.py, headers often contain the original route
-        forwarded = (
-            request.headers.get("x-matched-path")
-            or request.headers.get("x-forwarded-uri")
-            or request.headers.get("x-vercel-matched-path")
-        )
-        if forwarded and not forwarded.startswith("/api/index"):
-            request.scope["path"] = forwarded.split("?")[0]
-        elif request.scope.get("path", "").startswith("/api/index.py"):
-            new_path = request.scope["path"][len("/api/index.py"):] or "/"
+        path = request.scope.get("path", "")
+        # Only normalize if the path was literally rewritten to the entrypoint filename
+        if path.startswith("/api/index.py"):
+            new_path = path[len("/api/index.py"):] or "/"
             request.scope["path"] = new_path
-        elif request.scope.get("path", "").startswith("/api/index"):
-            new_path = request.scope["path"][len("/api/index"):] or "/"
-            request.scope["path"] = new_path
+        elif path == "/api/index":
+            request.scope["path"] = "/"
 
         return await call_next(request)
+
+    @app.api_route("/api/debug-route", methods=["GET", "POST"])
+    @app.api_route("/debug-route", methods=["GET", "POST"])
+    async def debug_route(request: Request):
+        return {
+            "scope_path": request.scope.get("path"),
+            "url_path": request.url.path,
+            "headers": dict(request.headers),
+            "method": request.method
+        }
 
     # CORS configuration for easy frontend attachment
     app.add_middleware(
