@@ -54,13 +54,16 @@ Modular AI Backend Service implementing the 5-Layer Pedagogical Model Stack:
     )
 
     @app.get("/", tags=["System"])
-    async def root():
+    async def root(request: Request):
         return {
             "status": "healthy",
             "service": "pedagogical-vision-backend",
             "documentation": "/docs",
             "health_check": "/health",
-            "api_prefix": settings.server.api_prefix
+            "api_prefix": settings.server.api_prefix,
+            "headers": dict(request.headers),
+            "scope_path": request.scope.get("path"),
+            "scope_query": request.scope.get("query_string", b"").decode("utf-8")
         }
 
     # Health & status check
