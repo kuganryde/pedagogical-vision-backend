@@ -1,0 +1,22 @@
+# Environments & Virtual Environments
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local Environment Variables & Logs
+.env
+*.log
+/tmp/
+
+# OS Artifacts
+.DS_Store
+Thumbs.db

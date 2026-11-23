@@ -1,0 +1,107 @@
+# ==============================================================================
+# Pedagogical Vision Analytics Engine - Configuration File
+# Recommended Modular Model Stack for Classroom Pedagogical & Behavioral Analytics
+# ==============================================================================
+
+server:
+  host: "0.0.0.0"
+  port: 8088
+  workers: 1
+  debug: false
+  cors_origins: ["*"]
+  api_prefix: "/api/v1"
+
+# Modular Detection & Behavioral Layers
+layers:
+  # 1. Student Detection & Tracking
+  # Isolates individual students in dense lecture halls and assigns persistent IDs
+  detection_and_tracking:
+    engine: "heuristic"          # Options: "ultralytics_yolo", "bytetrack", "heuristic" (auto-fallback)
+    model_name: "yolo11m"        # Options: "yolov8n", "yolov8m", "yolo11n", "yolo11m"
+    device: "cpu"                # Options: "cpu", "cuda", "mps"
+    confidence_threshold: 0.45
+    iou_threshold: 0.50
+    track_thresh: 0.25
+    match_thresh: 0.80
+    track_buffer: 30             # Number of frames to maintain lost track ID before reassigning
+
+  # 2. Body Posture & Gestures
+  # Tracks skeletal keypoints to identify hand-raising, leaning forward, slumping, turning away
+  body_posture:
+    engine: "heuristic"          # Options: "yolov8_pose", "mediapipe_holistic", "heuristic"
+    model_name: "yolov8m-pose"   # Options: "yolov8n-pose", "yolov8m-pose", "mediapipe"
+    keypoint_threshold: 0.50
+    hand_raise_wrist_nose_margin: 15.0   # Pixels or normalized offset above nose
+    lean_forward_torso_deg: 18.0         # Angle indicating active engagement
+    slump_desk_collapse_ratio: 0.55      # Height ratio indicating slumping/sleeping on desk
+    turning_away_angle_deg: 35.0         # Side angle indicating student turned away from lecture
+
+  # 3. Head Pose & Gaze Direction
+  # Estimates pitch, yaw, roll to verify board/lecturer, notes, or phone distraction
+  head_pose:
+    engine: "heuristic"          # Options: "6drepnet", "l2cs_net", "heuristic"
+    model_name: "6DRepNet"       # Options: "6DRepNet", "L2CS-Net"
+    # Degrees boundaries for gaze classification
+    gaze_zones:
+      board_lecturer:
+        yaw_range: [-22.0, 22.0]
+        pitch_range: [-15.0, 15.0]
+      notebook_desk:
+        yaw_range: [-30.0, 30.0]
+        pitch_range: [-45.0, -15.0]
+      phone_lap:
+        yaw_range: [-35.0, 35.0]
+        pitch_range: [-90.0, -45.0]
+      sideways_distracted:
+        yaw_threshold: 30.0
+
+  # 4. Facial Affect & Micro-Reactions
+  # Classifies classroom affective states and Action Units (AUs)
+  facial_affect:
+    engine: "heuristic"          # Options: "hsemotion", "poster_plus_plus", "openface", "heuristic"
+    model_name: "HSEmotion-B0"   # Options: "HSEmotion-B0", "POSTER++", "OpenFace-2.0"
+    emotions:
+      - "concentration"
+      - "confusion"
+      - "boredom"
+      - "delight"
+      - "frustration"
+      - "neutral"
+    action_units_tracked:
+      - "AU01_inner_brow_raiser"
+      - "AU02_outer_brow_raiser"
+      - "AU04_brow_lowerer"
+      - "AU12_lip_corner_puller"
+      - "AU15_lip_corner_depressor"
+      - "AU43_eyes_closed"
+
+  # 5. Temporal Sentiment Fusion
+  # Aggregates movement, gaze, and facial vectors over a 5–15 second sliding window
+  temporal_fusion:
+    engine: "heuristic"          # Options: "st_gcn", "temporal_transformer", "xgboost", "heuristic"
+    sliding_window_seconds: 10.0 # 5-15 second sliding window
+    sample_rate_fps: 5.0         # Temporal sampling FPS
+    weights:
+      attention_gaze: 0.40
+      facial_affect: 0.35
+      body_posture: 0.25
+    alert_thresholds:
+      confusion_alert_rate: 0.30       # If > 30% of class is confused, trigger pedagogical alert
+      prolonged_distraction_seconds: 8.0 # Alert if student looks at phone > 8 seconds
+      sleeping_desk_seconds: 10.0      # Alert if student slumps on desk > 10 seconds
+
+# Classroom Session Management
+session:
+  max_active_sessions: 100
+  session_timeout_minutes: 120
+  export_analytics_on_close: true
+
+# Outbound Event Push (Webhooks, MQTT, Redis)
+events:
+  webhooks_enabled: true
+  webhook_endpoints: []
+  publish_events:
+    - "STUDENT_HAND_RAISE"
+    - "LECTURE_CONFUSION_SPIKE"
+    - "PERSISTENT_DISENGAGEMENT"
+    - "CLASS_ENGAGEMENT_UPDATE"
